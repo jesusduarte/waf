@@ -1,0 +1,13 @@
+[
+  {
+    "Method": "POST",
+    "PathPattern": "/submit",
+    "SegmentRegexes": {},
+    "FieldRegexes": {
+      "field1": "regex1"
+    },
+    "AllowedContentTypes": [ "application/x-www-form-urlencoded" ],
+    "DisallowedContentTypes": [],
+    "Action": "allow"
+  }
+]

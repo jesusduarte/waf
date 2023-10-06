@@ -1,0 +1,55 @@
+[
+  {
+    "Method": "GET",
+    "PathPattern": "/cdu/{page}",
+    "SegmentRegexes": {
+      "page": "^[a-z\\.]+"
+    },
+    "_comments": {
+      "FieldRegexes": {},
+      "AllowedContentTypes": [],
+      "DisallowedContentTypes": [ "application/json" ]
+    },
+    "Action": "allow"
+  },
+  {
+    "Method": "GET",
+    "PathPattern": "/cdu/",
+    "Action": "allow"
+  },
+  {
+    "Method": "GET",
+    "PathPattern": "/img/{imagefile}",
+    "SegmentRegexes": {
+      "imagefile": "\\.png$"
+    },
+    "Action": "allow"
+  },
+  {
+    "Method": "POST",
+    "PathPattern": "/cdu/login.php",
+    "_comment": {
+      "SegmentRegexes": {},
+      "AllowedContentTypes": [ "application/x-www-form-urlencoded" ],
+      "FieldRegexes": {
+        "field1": "login"
+      },
+
+      "DisallowedContentTypes": []
+    },
+    "Action": "allow"
+  },
+  {
+    "Method": "POST",
+    "PathPattern": "/cdu/admin/{}",
+    "_comment": {
+      "SegmentRegexes": {},
+      "AllowedContentTypes": [ "application/x-www-form-urlencoded" ],
+      "FieldRegexes": {
+        "field1": "login"
+      },
+      "DisallowedContentTypes": []
+    },
+    "Action": "allow"
+  }
+]
