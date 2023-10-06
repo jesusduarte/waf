@@ -1,5 +1,5 @@
 using System.Text.Json;
-using WAF.Rules;
+using WAF.Configuration;
 
 namespace WAF
 {
@@ -12,7 +12,6 @@ namespace WAF
             {
                 PropertyNameCaseInsensitive = true,
                 IncludeFields = true,
-                
             });
 
             if (config != null)
@@ -39,8 +38,6 @@ namespace WAF
                 if (rulesByMethod.ContainsKey("ANY"))
                     rulesMixedByMethod[method].AddRange(rulesByMethod["ANY"]);
             }
-
-
 
             var builder = WebApplication.CreateBuilder(args);
 

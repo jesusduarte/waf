@@ -10,10 +10,9 @@ using Microsoft.AspNetCore.Http.Headers;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.Extensions.Primitives;
 using System.Reflection.PortableExecutable;
-using WAF.Rules;
 using System.Web;
 using System.Collections.Immutable;
-using WAF;
+using WAF.Configuration;
 
 public class ProxyMiddleware
 {
@@ -45,7 +44,8 @@ public class ProxyMiddleware
         {
             context.Response.StatusCode = 403; // Forbidden
             context.Response.Headers.Add("x-waf","1");
-            await context.Response.WriteAsync("Request blocked by WAF");
+            context.Response.Headers.ContentType = "text/html";
+            await context.Response.SendFileAsync(string.Format("status/{0}.html", context.Response.StatusCode));
             return;
         }
         
@@ -57,7 +57,8 @@ public class ProxyMiddleware
         {
             context.Response.StatusCode = 403; // Forbidden
             context.Response.Headers.Add("x-waf-rule", "deny");
-            await context.Response.WriteAsync("Request blocked by WAF");
+            context.Response.Headers.ContentType = "text/html";
+            await context.Response.SendFileAsync(string.Format("status/{0}.html", context.Response.StatusCode));
             return;
         }
 
@@ -74,30 +75,34 @@ public class ProxyMiddleware
         // Copy headers if needed
         var setcookies = upstreamResponse.Headers.Where(h => h.Key.StartsWith("set-cookie", StringComparison.OrdinalIgnoreCase)).ToList();
         foreach (var header in setcookies) {
-            //TODO: Check cookie and encrypt.
-            
             string value = string.Join("; ", header.Value.ToArray());
-            var schv = SetCookieHeaderValue.Parse(value);
+            var setcookie = SetCookieHeaderValue.Parse(value);
 
-            if (_config.SessionConfig != null && _config.SessionConfig.CookieName.Equals(schv.Name.Value, StringComparison.OrdinalIgnoreCase)) {
-                schv.Name = _config.SessionConfig.RenameTo;
+            if (_config.SessionConfig != null && _config.SessionConfig.CookieName.Equals(setcookie.Name.Value, StringComparison.OrdinalIgnoreCase)) {
+                setcookie.Name = _config.SessionConfig.RenameTo;
                 if (_config.SessionConfig.Secure.HasValue) 
                 {
-                    schv.Secure = _config.SessionConfig.Secure.Value;
+                    setcookie.Secure = _config.SessionConfig.Secure.Value;
                 }
                 if (_config.SessionConfig.HttpOnly.HasValue)
                 {
-                    schv.HttpOnly = _config.SessionConfig.HttpOnly.Value;
+                    setcookie.HttpOnly = _config.SessionConfig.HttpOnly.Value;
                 }
                 if (_config.SessionConfig.SameSite != Microsoft.Net.Http.Headers.SameSiteMode.Unspecified )
                 {
-                    schv.SameSite = _config.SessionConfig.SameSite;
+                    setcookie.SameSite = _config.SessionConfig.SameSite;
                 }
-
+                if (_config.SessionConfig.Encrypt.HasValue && _config.SessionConfig.Encrypt.Value == true)
+                {
+                    //string baseValue = setcookie.Value.Value;
+                    //setcookie.Value = baseValue;
+                    //TODO: Encrypt value
+                    Debug.WriteLine("(*) Response.SetCookieEnc: {0} - {1}", setcookie.Name.Value, setcookie.Value.Value);
+                }
             }
-            Debug.WriteLine("(*) Response.Cookie: {0} - {1}", header.Key, value);
-            Debug.WriteLine("(*) Response.CookieCHV: {0} - {1}", header.Key, schv.ToString());
-            contextResponse.Headers[header.Key] = schv.ToString();
+            Debug.WriteLine("(*) Response.SetCookie: {0} - {1}", header.Key, value);
+            Debug.WriteLine("(*) Response.SetCookieCHV: {0} - {1}", header.Key, setcookie.ToString());
+            contextResponse.Headers[header.Key] = setcookie.ToString();
         }
 
         var otherHeaders = upstreamResponse.Headers.Where(h => !h.Key.StartsWith("set-cookie", StringComparison.OrdinalIgnoreCase)).ToList(); 
@@ -290,22 +295,29 @@ public class ProxyMiddleware
         var cookieHeaders = context.Request.Headers.Where(h => h.Key.StartsWith("cookie", StringComparison.OrdinalIgnoreCase)).ToList();
         foreach (var header in cookieHeaders) {            
             string key = header.Key;
-            
             var cookie = CookieHeaderValue.Parse(header.Value.ToString());
 
-            if (_config.SessionConfig != null && _config.SessionConfig.RenameTo.Equals(cookie.Name.Value, StringComparison.OrdinalIgnoreCase)) {
-                cookie.Name = _config.SessionConfig.CookieName;
+            bool renameCookie = _config.SessionConfig != null && _config.SessionConfig.RenameTo.Equals(cookie.Name.Value, StringComparison.OrdinalIgnoreCase);
+            if (renameCookie) {
+                cookie.Name = _config.SessionConfig?.CookieName;
+            }
+
+            bool decryptCookie = _config.SessionConfig.Encrypt.HasValue && _config.SessionConfig.Encrypt.Value == true;
+            if (decryptCookie)
+            {
+                //string baseValue = cookie.Value.Value;
+                //cookie.Value = baseValue;
+                //TODO: Decrypt value
+                Debug.WriteLine("(*) Response.CookieDec: {0} - {1}", cookie.Name.Value, cookie.Value.Value);
             }
 
             Debug.WriteLine("(*) UpstreamRequest.Cookie: {0} - {1}", key, cookie.ToString());
-            _httpClient.DefaultRequestHeaders.Add(key, cookie.ToString());
-            //_httpClient.DefaultRequestHeaders.TryAddWithoutValidation(key, chv.ToString());
+            _httpClient.DefaultRequestHeaders.TryAddWithoutValidation(key, cookie.ToString());
         }
 
         try
         {
             var upstreamRequest = await CreateUpstreamRequest(context);
-
             var upstreamResponse = await _httpClient.SendAsync(
                upstreamRequest
                , HttpCompletionOption.ResponseHeadersRead

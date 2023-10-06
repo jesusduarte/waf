@@ -1,6 +1,6 @@
 ﻿using System.Text.RegularExpressions;
 
-namespace WAF.Rules
+namespace WAF.Configuration
 {
     public class Rule
     {
@@ -22,8 +22,8 @@ namespace WAF.Rules
             if (
                 AllowedContentTypes != null &&
                 (
-                 (AllowedContentTypes.Any() && !AllowedContentTypes.Contains(request.ContentType)) ||
-                 (DisallowedContentTypes.Any() && DisallowedContentTypes.Contains(request.ContentType))
+                 AllowedContentTypes.Any() && !AllowedContentTypes.Contains(request.ContentType) ||
+                 DisallowedContentTypes.Any() && DisallowedContentTypes.Contains(request.ContentType)
                 )
                )
             {
@@ -61,7 +61,7 @@ namespace WAF.Rules
                 {
                     var segmentKey = patternSegment.Trim('{', '}');
                     if (
-                        !SegmentRegexes.TryGetValue(segmentKey, out var pattern) || 
+                        !SegmentRegexes.TryGetValue(segmentKey, out var pattern) ||
                         !Regex.IsMatch(pathSegments[i], pattern))
                         return false;
                 }

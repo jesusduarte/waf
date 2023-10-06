@@ -1,7 +1,6 @@
 ﻿using System.Text.Json.Serialization;
-using WAF.Rules;
 
-namespace WAF
+namespace WAF.Configuration
 {
     public class Config
     {
