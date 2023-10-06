@@ -7,8 +7,20 @@ namespace WAF
     {
         public static void Main(string[] args)
         {
-            var rulesJson = File.ReadAllText("rules.json");
-            var rules = JsonSerializer.Deserialize<List<Rule>>(rulesJson);
+            var configJson = File.ReadAllText("rules.json");
+            var config = JsonSerializer.Deserialize<Config>(configJson, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                IncludeFields = true,
+                
+            });
+
+            if (config != null)
+            {
+                File.WriteAllText("backup.json", JsonSerializer.Serialize<Config>(config));
+            }
+            
+            var rules = config.Rules;
             Dictionary<string, List<Rule>> rulesByMethod;
             Dictionary<string, List<Rule>> rulesMixedByMethod;
 
@@ -43,7 +55,7 @@ namespace WAF
 
             var app = builder.Build();
 
-            app.UseMiddleware<ProxyMiddleware>(rulesMixedByMethod);
+            app.UseMiddleware<ProxyMiddleware>(config,rulesMixedByMethod);
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())

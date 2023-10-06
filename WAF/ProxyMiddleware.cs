@@ -13,6 +13,7 @@ using System.Reflection.PortableExecutable;
 using WAF.Rules;
 using System.Web;
 using System.Collections.Immutable;
+using WAF;
 
 public class ProxyMiddleware
 {
@@ -21,12 +22,13 @@ public class ProxyMiddleware
 
     //private readonly string upstream= "https://httpbin.org";
     private readonly string upstream = "https://www.cerveceriaduarte.mx";
-    private Dictionary<string, List<Rule>> _rules;
+    private readonly Dictionary<string, List<Rule>> _rules;
+    private Config _config;
 
-    public ProxyMiddleware(RequestDelegate next, HttpClient httpClient, Dictionary<string, List<Rule>> amalgamatedRules)
+    public ProxyMiddleware(RequestDelegate next, Config config, Dictionary<string, List<Rule>> amalgamatedRules)
     {
         _next = next;
-
+        _config = config;
  
         //_httpClient = httpClient;
         _rules = amalgamatedRules;
@@ -42,6 +44,7 @@ public class ProxyMiddleware
         if (!IsValidRequest)
         {
             context.Response.StatusCode = 403; // Forbidden
+            context.Response.Headers.Add("x-waf","1");
             await context.Response.WriteAsync("Request blocked by WAF");
             return;
         }
@@ -49,10 +52,11 @@ public class ProxyMiddleware
         _rules.TryGetValue(context.Request.Method, out var relevantRules);
         //var matchedRule = relevantRules?.FirstOrDefault(rule => rule.Matches(context.Request));
         //if (matchedRule == null || matchedRule.Action.Equals("deny", StringComparison.OrdinalIgnoreCase))
-        var matchedRule = relevantRules?.FindAll(rule => rule.Matches(context.Request));  
+        var matchedRule = relevantRules?.FindAll(rule => rule.Matches(context.Request));
         if (matchedRule == null || matchedRule.Count==0 || matchedRule.First().Action.Equals("deny",StringComparison.OrdinalIgnoreCase))
         {
             context.Response.StatusCode = 403; // Forbidden
+            context.Response.Headers.Add("x-waf-rule", "deny");
             await context.Response.WriteAsync("Request blocked by WAF");
             return;
         }
@@ -71,9 +75,29 @@ public class ProxyMiddleware
         var setcookies = upstreamResponse.Headers.Where(h => h.Key.StartsWith("set-cookie", StringComparison.OrdinalIgnoreCase)).ToList();
         foreach (var header in setcookies) {
             //TODO: Check cookie and encrypt.
+            
             string value = string.Join("; ", header.Value.ToArray());
+            var schv = SetCookieHeaderValue.Parse(value);
+
+            if (_config.SessionConfig != null && _config.SessionConfig.CookieName.Equals(schv.Name.Value, StringComparison.OrdinalIgnoreCase)) {
+                schv.Name = _config.SessionConfig.RenameTo;
+                if (_config.SessionConfig.Secure.HasValue) 
+                {
+                    schv.Secure = _config.SessionConfig.Secure.Value;
+                }
+                if (_config.SessionConfig.HttpOnly.HasValue)
+                {
+                    schv.HttpOnly = _config.SessionConfig.HttpOnly.Value;
+                }
+                if (_config.SessionConfig.SameSite != Microsoft.Net.Http.Headers.SameSiteMode.Unspecified )
+                {
+                    schv.SameSite = _config.SessionConfig.SameSite;
+                }
+
+            }
             Debug.WriteLine("(*) Response.Cookie: {0} - {1}", header.Key, value);
-            contextResponse.Headers[header.Key] = value;
+            Debug.WriteLine("(*) Response.CookieCHV: {0} - {1}", header.Key, schv.ToString());
+            contextResponse.Headers[header.Key] = schv.ToString();
         }
 
         var otherHeaders = upstreamResponse.Headers.Where(h => !h.Key.StartsWith("set-cookie", StringComparison.OrdinalIgnoreCase)).ToList(); 
@@ -202,12 +226,11 @@ public class ProxyMiddleware
 
         if (request.Method.Equals("POST") && request.HasFormContentType)
         {
-
             if (request.Form.Count == 0) return false;
 
             // Replace with actual regular expressions and validation logic
-            var keyRegex = new Regex(@"^[a-z][a-z0-9]+(\[[a-z][a-z0-9]+\])*$", RegexOptions.IgnoreCase);
-            var valueRegex = new Regex(@"^[a-z0-9\-_\?\*\+\\/\^\`~=!""\$%&\(\)]+$", RegexOptions.IgnoreCase);
+            var keyRegex = new Regex(@"^[a-z][a-z0-9_\\-]+(\[[a-z][a-z0-9_\\-]+\])*$", RegexOptions.IgnoreCase);
+            var valueRegex = new Regex(@"^[a-z0-9_\?\*\+\\/\^\`~=!\$%&\(\) ]+$", RegexOptions.IgnoreCase);
             foreach (var key in request.Form.Keys)
             {
                 if (!keyRegex.IsMatch(key)) return false;
@@ -251,6 +274,10 @@ public class ProxyMiddleware
             {
                 continue;
             }
+            if (header.Key.StartsWith("Cookie", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
             //if (header.Key.StartsWith("Sec-", StringComparison.OrdinalIgnoreCase))
             //{
             //    continue;
@@ -260,27 +287,20 @@ public class ProxyMiddleware
             Debug.WriteLine("(*) Request.Header: {0} - {1}", header.Key, string.Join(", ", header.Value));
         }
 
-        //List<string> cookieValues = new();
-        //foreach (var cookie in context.Request.Cookies)
-        //{
-        //    //SetCookieHeaderValue.Parse();
-        //    cookieValues.Add(string.Format("{0}={1}", cookie.Key, cookie.Value));
-        //    Debug.WriteLine("(*) UpstreamRequest.Cookie: {0} - {1}", cookie.Key, cookie.Value);
-        //    _httpClient.DefaultRequestHeaders.Add("Cookie", string.Format("{0}={1}", cookie.Key, cookie.Value));
-        //}
+        var cookieHeaders = context.Request.Headers.Where(h => h.Key.StartsWith("cookie", StringComparison.OrdinalIgnoreCase)).ToList();
+        foreach (var header in cookieHeaders) {            
+            string key = header.Key;
+            
+            var cookie = CookieHeaderValue.Parse(header.Value.ToString());
 
-        var cookieHeaders = context.Response.Headers.Where(h => h.Key.StartsWith("cookie", StringComparison.OrdinalIgnoreCase)).ToList();
-        foreach (var header in cookieHeaders) {
-            //_httpClient.DefaultRequestHeaders.Add(header.Key, header.Value);
-            Debug.WriteLine("(*) UpstreamRequest.Cookie: {0} - {1}", header.Key, header.Value);
-            var value = header.Value.ToString();
-            _httpClient.DefaultRequestHeaders.TryAddWithoutValidation(header.Key, value);
+            if (_config.SessionConfig != null && _config.SessionConfig.RenameTo.Equals(cookie.Name.Value, StringComparison.OrdinalIgnoreCase)) {
+                cookie.Name = _config.SessionConfig.CookieName;
+            }
+
+            Debug.WriteLine("(*) UpstreamRequest.Cookie: {0} - {1}", key, cookie.ToString());
+            _httpClient.DefaultRequestHeaders.Add(key, cookie.ToString());
+            //_httpClient.DefaultRequestHeaders.TryAddWithoutValidation(key, chv.ToString());
         }
-        //if (cookieValues.Count > 0)
-        //{
-        //    upstreamRequest.Headers.Add("Cookie", string.Join("; ", cookieValues));
-        //    //upstreamRequest.Content.Headers.Add("X-Content-Cookie", string.Join("; ", cookieValues));
-        //}
 
         try
         {
