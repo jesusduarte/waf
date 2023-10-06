@@ -1,4 +1,6 @@
 {
+  "Upstream": "https://www.cerveceriaduarte.mx",
+
   "SessionConfig": {
     "CookieName": "PHPSESSID",
     "RenameTo": "WAFID",

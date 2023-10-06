@@ -20,7 +20,7 @@ public class ProxyMiddleware
     private readonly HttpClient _httpClient;
 
     //private readonly string upstream= "https://httpbin.org";
-    private readonly string upstream = "https://www.cerveceriaduarte.mx";
+    private readonly string upstream = string.Empty;
     private readonly Dictionary<string, List<Rule>> _rules;
     private Config _config;
 
@@ -28,6 +28,7 @@ public class ProxyMiddleware
     {
         _next = next;
         _config = config;
+        upstream = config.Upstream;
  
         //_httpClient = httpClient;
         _rules = amalgamatedRules;
