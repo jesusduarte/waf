@@ -4,11 +4,11 @@
   "NetworkRules": [
     {
       "Network": "127.0.0.0/24",
-      "Action": "Allow"
+      "Action": "Deny"
     },
     {
       "Network": "::1/64",
-      "Action": "Deny"
+      "Action": "Allow"
     }
   ],
 
@@ -34,7 +34,7 @@
         "DisallowedContentTypes": [ "application/json" ]
       },
       "Action": "allow",
-      "OnMatch":  "stop"
+      "OnMatch": "stop"
     },
     {
       "Method": "GET",
@@ -42,8 +42,17 @@
       "SegmentRegexes": {
         "page": "^clientes.listado.php"
       },
-      
+
       "Action": "deny"
+    },
+    {
+      "Method": "GET",
+      "PathPattern": "/cdu/{page}",
+      "SegmentRegexes": {
+        "page": "^1.jpeg$"
+      },
+
+      "Action": "allow"
     },
     {
       "Method": "GET",
@@ -84,6 +93,50 @@
         "DisallowedContentTypes": []
       },
       "Action": "allow"
+    }
+  ],
+
+  "Dlp": [
+    {
+      "Name": "html",
+      "ContentType": [
+        "text/html"
+      ],
+      "Action": "allow"
+    },
+    {
+      "Name": "png",
+      "MagicNumbersHex": [ "89504E470D0A1A0A" ],
+      "Position": 0,
+      "Action": "allow"
+    },
+    {
+      "Name": "jpeg",
+      "MagicNumbersHex": [
+        "FF D8 FF DB",
+        "FF D8 FF E0 00 10 4A 46 49 46 00 01",
+        "FF D8 FF EE",
+        "FF D8 FF E0"
+      ],
+      "Position": 0,
+      "Action": "deny"
+    },
+    {
+      "Name": "EXE Windows",
+      "MagicNumbersHex": [
+        "4D 5A",
+        "5A 4D"
+      ],
+      "Position": 0,
+      "Action": "deny"
+    },
+    {
+      "Name": "EXE Linux",
+      "MagicNumbersHex": [
+        "7F 45 4C 46"
+      ],
+      "Position": 0,
+      "Action": "deny"
     }
   ]
 }

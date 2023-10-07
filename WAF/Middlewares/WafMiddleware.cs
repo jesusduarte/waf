@@ -52,6 +52,7 @@ public class WafMiddleware
         if (matchedRules == null || matchedRules.Count == 0)
         {
             context.Response.StatusCode = 403; // Forbidden
+            context.Response.Headers.Add("x-waf", "2");
             context.Response.Headers.Add("x-waf-rule", RuleAction.Deny.ToString());
             context.Response.Headers.ContentType = "text/html";
             await context.Response.SendFileAsync(string.Format("status/{0}.html", context.Response.StatusCode));
@@ -76,6 +77,7 @@ public class WafMiddleware
         if (finalRule.Action == RuleAction.Deny)
         {
             context.Response.StatusCode = 403; // Forbidden
+            context.Response.Headers.Add("x-waf", "2");
             context.Response.Headers.Add("x-waf-rule", "deny");
             context.Response.Headers.ContentType = "text/html";
             await context.Response.SendFileAsync(string.Format("status/{0}.html", context.Response.StatusCode));

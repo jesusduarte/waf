@@ -10,6 +10,9 @@ namespace WAF.Configuration
         public SessionConfig? SessionConfig { get; set; } = null;
 
         public List<NetworkRuleConfig> NetworkRules { get; set; } = new List<NetworkRuleConfig> { };
+
+        [JsonPropertyName("Dlp")]
+        public List<DlpRuleConfig> DlpRules { get; set; } = new List<DlpRuleConfig>();
     }
 
 }
