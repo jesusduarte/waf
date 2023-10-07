@@ -15,6 +15,7 @@ using System.Collections.Immutable;
 using WAF.Configuration;
 using Microsoft.AspNetCore.HttpOverrides;
 using System.Linq;
+using System.Text;
 
 namespace WAF.Middlewares;
 public class WafMiddleware
@@ -32,6 +33,28 @@ public class WafMiddleware
         Debug.WriteLine("(+) ProxyMiddleware constructor");
     }
 
+    private async Task SendBlockedByMiddleware(HttpContext context)
+    {
+        context.Response.StatusCode = 403; // Forbidden
+        context.Response.Headers.Add("x-waf", "2");
+        context.Response.Headers.ContentType = "text/html";
+
+        // Leer el archivo HTML
+        string htmlFilePath = string.Format("status/{0}.html", context.Response.StatusCode);
+        string htmlContent = await File.ReadAllTextAsync(htmlFilePath);
+
+        // Realizar el reemplazo de placeholders
+        htmlContent = htmlContent.Replace("{reason}", "Ruta no permitida"); // Reemplazar "{reason}" con el motivo real
+        htmlContent = htmlContent.Replace("{path}", context.Request.Path); // Reemplazar "{path}" con la ruta real
+
+        // Convertir el contenido HTML modificado en bytes
+        byte[] htmlBytes = Encoding.UTF8.GetBytes(htmlContent);
+
+        // Escribir la respuesta al cliente
+        context.Response.ContentLength = htmlBytes.Length;
+        await context.Response.Body.WriteAsync(htmlBytes);
+    }
+
     public async Task InvokeAsync(HttpContext context)
     {
         context.Request.EnableBuffering();
@@ -39,10 +62,7 @@ public class WafMiddleware
         bool IsValidRequest = ValidateRequest(context.Request);
         if (!IsValidRequest)
         {
-            context.Response.StatusCode = 403; // Forbidden
-            context.Response.Headers.Add("x-waf", "2");
-            context.Response.Headers.ContentType = "text/html";
-            await context.Response.SendFileAsync(string.Format("status/{0}.html", context.Response.StatusCode));
+            await SendBlockedByMiddleware(context);
             return;
         }
 
@@ -51,11 +71,7 @@ public class WafMiddleware
 
         if (matchedRules == null || matchedRules.Count == 0)
         {
-            context.Response.StatusCode = 403; // Forbidden
-            context.Response.Headers.Add("x-waf", "2");
-            context.Response.Headers.Add("x-waf-rule", RuleAction.Deny.ToString());
-            context.Response.Headers.ContentType = "text/html";
-            await context.Response.SendFileAsync(string.Format("status/{0}.html", context.Response.StatusCode));
+            await SendBlockedByMiddleware(context);
             return;
         }
 
@@ -76,11 +92,7 @@ public class WafMiddleware
 
         if (finalRule.Action == RuleAction.Deny)
         {
-            context.Response.StatusCode = 403; // Forbidden
-            context.Response.Headers.Add("x-waf", "2");
-            context.Response.Headers.Add("x-waf-rule", "deny");
-            context.Response.Headers.ContentType = "text/html";
-            await context.Response.SendFileAsync(string.Format("status/{0}.html", context.Response.StatusCode));
+            await SendBlockedByMiddleware(context);
             return;
         }
 

@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.IO;
+using System.Text;
 using WAF.Configuration;
 
 namespace WAF.Middlewares
@@ -16,6 +17,28 @@ namespace WAF.Middlewares
             _config = config;
             _networkRules = _config.NetworkRules.Select(r => r.Compile()).ToList();
             Debug.WriteLine("(+) NetMiddleware constructor");
+        }
+
+        private async Task SendBlockedByMiddleware(HttpContext context)
+        {
+            context.Response.StatusCode = 403; // Forbidden
+            context.Response.Headers.Add("x-waf", "1");
+            context.Response.Headers.ContentType = "text/html";
+
+            // Leer el archivo HTML
+            string htmlFilePath = string.Format("status/{0}.html", context.Response.StatusCode);
+            string htmlContent = await File.ReadAllTextAsync(htmlFilePath);
+
+            // Realizar el reemplazo de placeholders
+            htmlContent = htmlContent.Replace("{reason}", "Network Blocked"); // Reemplazar "{reason}" con el motivo real
+            htmlContent = htmlContent.Replace("{path}", context.Request.Path); // Reemplazar "{path}" con la ruta real
+
+            // Convertir el contenido HTML modificado en bytes
+            byte[] htmlBytes = Encoding.UTF8.GetBytes(htmlContent);
+
+            // Escribir la respuesta al cliente
+            context.Response.ContentLength = htmlBytes.Length;
+            await context.Response.Body.WriteAsync(htmlBytes);
         }
 
         public async Task InvokeAsync(HttpContext context)
@@ -36,10 +59,7 @@ namespace WAF.Middlewares
 
             if (matchedNetworkRule == null || matchedNetworkRule.Action == RuleAction.Deny)
             {
-                context.Response.StatusCode = 403; // Forbidden
-                context.Response.Headers.Add("x-waf", "1");
-                context.Response.Headers.ContentType = "text/html";
-                await context.Response.SendFileAsync(string.Format("status/{0}.html", context.Response.StatusCode));
+                await SendBlockedByMiddleware(context);
                 return;
             }
 

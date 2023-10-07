@@ -7,6 +7,7 @@
     <style>
         body {
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
             height: 100vh;
@@ -19,9 +20,17 @@
             font-size: 24px;
             text-align: center;
         }
+
+        .message {
+            font-size: 18px;
+            text-align: center;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
     <h1>Request Blocked by WAF</h1>
+    <div class="message">Reason: {reason}</div>
+    <div class="message">Path: {path}</div>
 </body>
 </html>
