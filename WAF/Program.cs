@@ -52,7 +52,7 @@ namespace WAF
 
             var app = builder.Build();
 
-            app.UseMiddleware<ProxyMiddleware>(config,rulesMixedByMethod);
+            app.UseMiddleware<WafMiddleware>(config,rulesMixedByMethod);
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())

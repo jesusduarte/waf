@@ -15,17 +15,16 @@ using System.Collections.Immutable;
 using WAF.Configuration;
 
 namespace WAF;
-public class ProxyMiddleware
+public class WafMiddleware
 {
     private readonly RequestDelegate _next;
-    private readonly HttpClient _httpClient;
 
     //private readonly string upstream= "https://httpbin.org";
     private readonly string upstream = string.Empty;
     private readonly Dictionary<string, List<Rule>> _rules;
     private readonly Config _config;
 
-    public ProxyMiddleware(RequestDelegate next, Config config, Dictionary<string, List<Rule>> amalgamatedRules)
+    public WafMiddleware(RequestDelegate next, Config config, Dictionary<string, List<Rule>> amalgamatedRules)
     {
         _next = next;
         _config = config;
@@ -51,8 +50,6 @@ public class ProxyMiddleware
         }
         
         _rules.TryGetValue(context.Request.Method, out var relevantRules);
-        //var matchedRule = relevantRules?.FirstOrDefault(rule => rule.Matches(context.Request));
-        //if (matchedRule == null || matchedRule.Action.Equals("deny", StringComparison.OrdinalIgnoreCase))
         var matchedRules = relevantRules?.FindAll(rule => rule.Matches(context.Request));
 
         if (matchedRules == null || matchedRules.Count==0)
