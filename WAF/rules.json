@@ -137,6 +137,14 @@
       ],
       "Position": 0,
       "Action": "deny"
+    },
+    {
+      "Name": "Linux Script",
+      "MagicNumbersHex": [
+        "23 21"
+      ],
+      "Position": 0,
+      "Action": "deny"
     }
   ]
 }
