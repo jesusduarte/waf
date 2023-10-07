@@ -14,6 +14,7 @@ using System.Web;
 using System.Collections.Immutable;
 using WAF.Configuration;
 
+namespace WAF;
 public class ProxyMiddleware
 {
     private readonly RequestDelegate _next;
@@ -33,7 +34,6 @@ public class ProxyMiddleware
         //_httpClient = httpClient;
         _rules = amalgamatedRules;
         Debug.WriteLine("(+) ProxyMiddleware constructor");
-
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -95,9 +95,8 @@ public class ProxyMiddleware
                 }
                 if (_config.SessionConfig.Encrypt.HasValue && _config.SessionConfig.Encrypt.Value == true)
                 {
-                    //string baseValue = setcookie.Value.Value;
-                    //setcookie.Value = baseValue;
-                    //TODO: Encrypt value
+                    var crypto = new AesCryptor(_config.SessionConfig.EncryptKey);
+                    setcookie.Value = crypto.Encrypt(setcookie.Value.Value); //Encrypt(setcookie.Value.Value, _config.SessionConfig.EncryptKey);
                     Debug.WriteLine("(*) Response.SetCookieEnc: {0} - {1}", setcookie.Name.Value, setcookie.Value.Value);
                 }
             }
@@ -306,9 +305,15 @@ public class ProxyMiddleware
             bool decryptCookie = _config.SessionConfig.Encrypt.HasValue && _config.SessionConfig.Encrypt.Value == true;
             if (decryptCookie)
             {
-                //string baseValue = cookie.Value.Value;
-                //cookie.Value = baseValue;
-                //TODO: Decrypt value
+                try
+                {
+                    var crypto = new AesCryptor(_config.SessionConfig.EncryptKey);
+                    cookie.Value = crypto.Decrypt(cookie.Value.Value);
+                }
+                catch (Exception e) {
+                    cookie.Value = string.Empty;
+                    Debug.WriteLine("{0} Response.CookieDec: {1}","{!}","Could Not decrypt cookie value");
+                }
                 Debug.WriteLine("(*) Response.CookieDec: {0} - {1}", cookie.Name.Value, cookie.Value.Value);
             }
 

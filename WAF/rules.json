@@ -5,6 +5,7 @@
     "CookieName": "PHPSESSID",
     "RenameTo": "WAFID",
     "Encrypt": true,
+    "EncryptKey": "supersecurepassword",
     "SameSite": "Strict",
     "Secure": true,
     "HttpOnly": true
@@ -14,7 +15,7 @@
       "Method": "GET",
       "PathPattern": "/cdu/{page}",
       "SegmentRegexes": {
-        "page": "^[a-z\\.]+"
+        "page": "^[a-z\\.]+\\.php"
       },
       "_comments": {
         "FieldRegexes": {},
