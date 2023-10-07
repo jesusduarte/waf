@@ -55,6 +55,7 @@ namespace WAF
 
             app.UseMiddleware<NetMiddleware>(config);
             app.UseMiddleware<WafMiddleware>(config,rulesMixedByMethod);
+            app.UseMiddleware<ProxyMiddleware>(config);
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
