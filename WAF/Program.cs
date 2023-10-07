@@ -1,5 +1,6 @@
 using System.Text.Json;
 using WAF.Configuration;
+using WAF.Middlewares;
 
 namespace WAF
 {
@@ -52,6 +53,7 @@ namespace WAF
 
             var app = builder.Build();
 
+            app.UseMiddleware<NetMiddleware>(config);
             app.UseMiddleware<WafMiddleware>(config,rulesMixedByMethod);
 
             // Configure the HTTP request pipeline.

@@ -16,7 +16,7 @@ using WAF.Configuration;
 using Microsoft.AspNetCore.HttpOverrides;
 using System.Linq;
 
-namespace WAF;
+namespace WAF.Middlewares;
 public class WafMiddleware
 {
     private readonly RequestDelegate _next;
@@ -24,7 +24,6 @@ public class WafMiddleware
     //private readonly string upstream= "https://httpbin.org";
     private readonly string upstream = string.Empty;
     private readonly Dictionary<string, List<Rule>> _rules;
-    private readonly List<NetworkRule> _networkRules;
     private readonly Config _config;
 
     public WafMiddleware(RequestDelegate next, Config config, Dictionary<string, List<Rule>> amalgamatedRules)
@@ -33,50 +32,27 @@ public class WafMiddleware
         _config = config;
         upstream = config.Upstream;
         _rules = amalgamatedRules;
-        _networkRules = _config.NetworkRules.Select(r => r.Compile()).ToList();
         Debug.WriteLine("(+) ProxyMiddleware constructor");
     }
 
     public async Task InvokeAsync(HttpContext context)
     {
-        var ip = context.Connection.RemoteIpAddress;
-        var contained = false;
-        NetworkRule matchedNetworkRule = null;
-        foreach (var rule in _networkRules)
-        {
-            contained = rule.Network.Contains(ip);
-            if (!contained) { continue; }
-            matchedNetworkRule = rule;
-            if (rule.OnMatch == RuleOnMatchBehaviour.Stop) {
-                break;
-            }
-        }
-
-        if ( matchedNetworkRule == null || matchedNetworkRule.Action == RuleAction.Deny)
-        {
-            context.Response.StatusCode = 403; // Forbidden
-            context.Response.Headers.Add("x-waf", "1");
-            context.Response.Headers.ContentType = "text/html";
-            await context.Response.SendFileAsync(string.Format("status/{0}.html", context.Response.StatusCode));
-            return;
-        }
-
         context.Request.EnableBuffering();
         // Filtering logic here
         bool IsValidRequest = ValidateRequest(context.Request);
         if (!IsValidRequest)
         {
             context.Response.StatusCode = 403; // Forbidden
-            context.Response.Headers.Add("x-waf","2");
+            context.Response.Headers.Add("x-waf", "2");
             context.Response.Headers.ContentType = "text/html";
             await context.Response.SendFileAsync(string.Format("status/{0}.html", context.Response.StatusCode));
             return;
         }
-        
+
         _rules.TryGetValue(context.Request.Method, out var relevantRules);
         var matchedRules = relevantRules?.FindAll(rule => rule.Matches(context.Request));
 
-        if (matchedRules == null || matchedRules.Count==0)
+        if (matchedRules == null || matchedRules.Count == 0)
         {
             context.Response.StatusCode = 403; // Forbidden
             context.Response.Headers.Add("x-waf-rule", RuleAction.Deny.ToString());
@@ -91,16 +67,17 @@ public class WafMiddleware
             finalRule = rule;
             if (rule.Action == RuleAction.Deny)
             {
-                break; 
+                break;
             }
 
-            if (rule.OnMatch == RuleOnMatchBehaviour.Stop )
+            if (rule.OnMatch == RuleOnMatchBehaviour.Stop)
             {
                 break;
             }
         }
 
-        if (finalRule.Action == RuleAction.Deny) {
+        if (finalRule.Action == RuleAction.Deny)
+        {
             context.Response.StatusCode = 403; // Forbidden
             context.Response.Headers.Add("x-waf-rule", "deny");
             context.Response.Headers.ContentType = "text/html";
@@ -120,13 +97,15 @@ public class WafMiddleware
 
         // Copy headers if needed
         var setcookies = upstreamResponse.Headers.Where(h => h.Key.StartsWith("set-cookie", StringComparison.OrdinalIgnoreCase)).ToList();
-        foreach (var header in setcookies) {
+        foreach (var header in setcookies)
+        {
             string value = string.Join("; ", header.Value.ToArray());
             var setcookie = SetCookieHeaderValue.Parse(value);
 
-            if (_config.SessionConfig != null && _config.SessionConfig.CookieName.Equals(setcookie.Name.Value, StringComparison.OrdinalIgnoreCase)) {
+            if (_config.SessionConfig != null && _config.SessionConfig.CookieName.Equals(setcookie.Name.Value, StringComparison.OrdinalIgnoreCase))
+            {
                 setcookie.Name = _config.SessionConfig.RenameTo;
-                if (_config.SessionConfig.Secure.HasValue) 
+                if (_config.SessionConfig.Secure.HasValue)
                 {
                     setcookie.Secure = _config.SessionConfig.Secure.Value;
                 }
@@ -134,13 +113,13 @@ public class WafMiddleware
                 {
                     setcookie.HttpOnly = _config.SessionConfig.HttpOnly.Value;
                 }
-                if (_config.SessionConfig.SameSite != Microsoft.Net.Http.Headers.SameSiteMode.Unspecified )
+                if (_config.SessionConfig.SameSite != Microsoft.Net.Http.Headers.SameSiteMode.Unspecified)
                 {
                     setcookie.SameSite = _config.SessionConfig.SameSite;
                 }
                 if (_config.SessionConfig.Encrypt.HasValue && _config.SessionConfig.Encrypt.Value == true)
                 {
-                    var crypto = new AesCryptor(_config.SessionConfig.EncryptKey??string.Empty);
+                    var crypto = new AesCryptor(_config.SessionConfig.EncryptKey ?? string.Empty);
                     setcookie.Value = crypto.Encrypt(setcookie.Value.Value); //Encrypt(setcookie.Value.Value, _config.SessionConfig.EncryptKey);
                     Debug.WriteLine("(*) Response.SetCookieEnc: {0} - {1}", setcookie.Name.Value, setcookie.Value.Value);
                 }
@@ -150,10 +129,10 @@ public class WafMiddleware
             contextResponse.Headers[header.Key] = setcookie.ToString();
         }
 
-        var otherHeaders = upstreamResponse.Headers.Where(h => !h.Key.StartsWith("set-cookie", StringComparison.OrdinalIgnoreCase)).ToList(); 
-        foreach (var header in otherHeaders )
+        var otherHeaders = upstreamResponse.Headers.Where(h => !h.Key.StartsWith("set-cookie", StringComparison.OrdinalIgnoreCase)).ToList();
+        foreach (var header in otherHeaders)
         {
-            string value = string.Join("; ",header.Value.ToArray());
+            string value = string.Join("; ", header.Value.ToArray());
             contextResponse.Headers[header.Key] = value;
             Debug.WriteLine("(*) Response.Header: {0} - {1}", header.Key, value);
         }
@@ -236,7 +215,7 @@ public class WafMiddleware
     {
         SanitizeRequestHeaders(request);
         SanitizeRequestQuery(request);
-        
+
         //QueryBuilder qb = new QueryBuilder();
     }
 
@@ -246,7 +225,7 @@ public class WafMiddleware
         request.Headers.Remove("X-Potentially-Harmful-Header");
     }
 
-    private void SanitizeRequestQuery(HttpRequest request) 
+    private void SanitizeRequestQuery(HttpRequest request)
     {
         Dictionary<string, StringValues> items = new();
         foreach (var item in request.Query)
@@ -338,12 +317,14 @@ public class WafMiddleware
         }
 
         var cookieHeaders = context.Request.Headers.Where(h => h.Key.StartsWith("cookie", StringComparison.OrdinalIgnoreCase)).ToList();
-        foreach (var header in cookieHeaders) {            
+        foreach (var header in cookieHeaders)
+        {
             string key = header.Key;
             var cookie = CookieHeaderValue.Parse(header.Value.ToString());
 
             bool renameCookie = _config.SessionConfig != null && _config.SessionConfig.RenameTo.Equals(cookie.Name.Value, StringComparison.OrdinalIgnoreCase);
-            if (renameCookie) {
+            if (renameCookie)
+            {
                 cookie.Name = _config.SessionConfig?.CookieName;
             }
 
@@ -352,12 +333,13 @@ public class WafMiddleware
             {
                 try
                 {
-                    var crypto = new AesCryptor(_config.SessionConfig?.EncryptKey??string.Empty);
+                    var crypto = new AesCryptor(_config.SessionConfig?.EncryptKey ?? string.Empty);
                     cookie.Value = crypto.Decrypt(cookie.Value.Value);
                 }
-                catch (Exception e) {
+                catch (Exception e)
+                {
                     cookie.Value = string.Empty;
-                    Debug.WriteLine("{0} Response.CookieDec: {1}","{!}","Could Not decrypt cookie value");
+                    Debug.WriteLine("{0} Response.CookieDec: {1}", "{!}", "Could Not decrypt cookie value");
                 }
                 Debug.WriteLine("(*) Response.CookieDec: {0} - {1}", cookie.Name.Value, cookie.Value.Value);
             }
