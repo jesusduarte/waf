@@ -23,7 +23,7 @@ public class ProxyMiddleware
     //private readonly string upstream= "https://httpbin.org";
     private readonly string upstream = string.Empty;
     private readonly Dictionary<string, List<Rule>> _rules;
-    private Config _config;
+    private readonly Config _config;
 
     public ProxyMiddleware(RequestDelegate next, Config config, Dictionary<string, List<Rule>> amalgamatedRules)
     {
@@ -53,9 +53,33 @@ public class ProxyMiddleware
         _rules.TryGetValue(context.Request.Method, out var relevantRules);
         //var matchedRule = relevantRules?.FirstOrDefault(rule => rule.Matches(context.Request));
         //if (matchedRule == null || matchedRule.Action.Equals("deny", StringComparison.OrdinalIgnoreCase))
-        var matchedRule = relevantRules?.FindAll(rule => rule.Matches(context.Request));
-        if (matchedRule == null || matchedRule.Count==0 || matchedRule.First().Action.Equals("deny",StringComparison.OrdinalIgnoreCase))
+        var matchedRules = relevantRules?.FindAll(rule => rule.Matches(context.Request));
+
+        if (matchedRules == null || matchedRules.Count==0)
         {
+            context.Response.StatusCode = 403; // Forbidden
+            context.Response.Headers.Add("x-waf-rule", "deny");
+            context.Response.Headers.ContentType = "text/html";
+            await context.Response.SendFileAsync(string.Format("status/{0}.html", context.Response.StatusCode));
+            return;
+        }
+
+        Rule finalRule = matchedRules[0];
+        foreach (var rule in matchedRules)
+        {
+            finalRule = rule;
+            if (rule.Action.Equals("deny", StringComparison.OrdinalIgnoreCase))
+            {
+                break; 
+            }
+
+            if (rule.OnMatch == RuleOnMatchBehaviour.Stop )
+            {
+                break;
+            }
+        }
+
+        if (finalRule.Action == "deny") {
             context.Response.StatusCode = 403; // Forbidden
             context.Response.Headers.Add("x-waf-rule", "deny");
             context.Response.Headers.ContentType = "text/html";
@@ -95,7 +119,7 @@ public class ProxyMiddleware
                 }
                 if (_config.SessionConfig.Encrypt.HasValue && _config.SessionConfig.Encrypt.Value == true)
                 {
-                    var crypto = new AesCryptor(_config.SessionConfig.EncryptKey);
+                    var crypto = new AesCryptor(_config.SessionConfig.EncryptKey??string.Empty);
                     setcookie.Value = crypto.Encrypt(setcookie.Value.Value); //Encrypt(setcookie.Value.Value, _config.SessionConfig.EncryptKey);
                     Debug.WriteLine("(*) Response.SetCookieEnc: {0} - {1}", setcookie.Name.Value, setcookie.Value.Value);
                 }
@@ -302,12 +326,12 @@ public class ProxyMiddleware
                 cookie.Name = _config.SessionConfig?.CookieName;
             }
 
-            bool decryptCookie = _config.SessionConfig.Encrypt.HasValue && _config.SessionConfig.Encrypt.Value == true;
+            bool decryptCookie = _config.SessionConfig != null && _config.SessionConfig.Encrypt.HasValue && _config.SessionConfig.Encrypt.Value == true;
             if (decryptCookie)
             {
                 try
                 {
-                    var crypto = new AesCryptor(_config.SessionConfig.EncryptKey);
+                    var crypto = new AesCryptor(_config.SessionConfig?.EncryptKey??string.Empty);
                     cookie.Value = crypto.Decrypt(cookie.Value.Value);
                 }
                 catch (Exception e) {

@@ -22,7 +22,17 @@
         "AllowedContentTypes": [],
         "DisallowedContentTypes": [ "application/json" ]
       },
-      "Action": "allow"
+      "Action": "allow",
+      "OnMatch":  "stop"
+    },
+    {
+      "Method": "GET",
+      "PathPattern": "/cdu/{page}",
+      "SegmentRegexes": {
+        "page": "^clientes.listado.php"
+      },
+      
+      "Action": "deny"
     },
     {
       "Method": "GET",

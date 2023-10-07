@@ -1,4 +1,5 @@
-﻿using System.Text.RegularExpressions;
+﻿using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 namespace WAF.Configuration
 {
@@ -11,6 +12,9 @@ namespace WAF.Configuration
         public List<string> AllowedContentTypes { get; set; } = null;
         public List<string> DisallowedContentTypes { get; set; } = null;
         public string Action { get; set; } = "deny";
+
+        [JsonConverter(typeof(JsonStringEnumConverter))]
+        public RuleOnMatchBehaviour OnMatch { get; set; } = RuleOnMatchBehaviour.Continue;
 
         public bool Matches(HttpRequest request)
         {
@@ -76,4 +80,9 @@ namespace WAF.Configuration
         // ... rest of the code
     }
 
+    public enum RuleOnMatchBehaviour
+    {
+        Continue,
+        Stop
+    }
 }
