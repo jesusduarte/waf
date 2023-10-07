@@ -1,6 +1,17 @@
 {
   "Upstream": "https://www.cerveceriaduarte.mx",
 
+  "NetworkRules": [
+    {
+      "Network": "127.0.0.0/24",
+      "Action": "Allow"
+    },
+    {
+      "Network": "::1/64",
+      "Action": "Deny"
+    }
+  ],
+
   "SessionConfig": {
     "CookieName": "PHPSESSID",
     "RenameTo": "WAFID",

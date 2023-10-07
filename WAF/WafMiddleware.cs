@@ -13,6 +13,8 @@ using System.Reflection.PortableExecutable;
 using System.Web;
 using System.Collections.Immutable;
 using WAF.Configuration;
+using Microsoft.AspNetCore.HttpOverrides;
+using System.Linq;
 
 namespace WAF;
 public class WafMiddleware
@@ -22,6 +24,7 @@ public class WafMiddleware
     //private readonly string upstream= "https://httpbin.org";
     private readonly string upstream = string.Empty;
     private readonly Dictionary<string, List<Rule>> _rules;
+    private readonly List<NetworkRule> _networkRules;
     private readonly Config _config;
 
     public WafMiddleware(RequestDelegate next, Config config, Dictionary<string, List<Rule>> amalgamatedRules)
@@ -29,21 +32,42 @@ public class WafMiddleware
         _next = next;
         _config = config;
         upstream = config.Upstream;
- 
-        //_httpClient = httpClient;
         _rules = amalgamatedRules;
+        _networkRules = _config.NetworkRules.Select(r => r.Compile()).ToList();
         Debug.WriteLine("(+) ProxyMiddleware constructor");
     }
 
     public async Task InvokeAsync(HttpContext context)
     {
+        var ip = context.Connection.RemoteIpAddress;
+        var contained = false;
+        NetworkRule matchedNetworkRule = null;
+        foreach (var rule in _networkRules)
+        {
+            contained = rule.Network.Contains(ip);
+            if (!contained) { continue; }
+            matchedNetworkRule = rule;
+            if (rule.OnMatch == RuleOnMatchBehaviour.Stop) {
+                break;
+            }
+        }
+
+        if ( matchedNetworkRule == null || matchedNetworkRule.Action == RuleAction.Deny)
+        {
+            context.Response.StatusCode = 403; // Forbidden
+            context.Response.Headers.Add("x-waf", "1");
+            context.Response.Headers.ContentType = "text/html";
+            await context.Response.SendFileAsync(string.Format("status/{0}.html", context.Response.StatusCode));
+            return;
+        }
+
         context.Request.EnableBuffering();
         // Filtering logic here
         bool IsValidRequest = ValidateRequest(context.Request);
         if (!IsValidRequest)
         {
             context.Response.StatusCode = 403; // Forbidden
-            context.Response.Headers.Add("x-waf","1");
+            context.Response.Headers.Add("x-waf","2");
             context.Response.Headers.ContentType = "text/html";
             await context.Response.SendFileAsync(string.Format("status/{0}.html", context.Response.StatusCode));
             return;
@@ -55,7 +79,7 @@ public class WafMiddleware
         if (matchedRules == null || matchedRules.Count==0)
         {
             context.Response.StatusCode = 403; // Forbidden
-            context.Response.Headers.Add("x-waf-rule", "deny");
+            context.Response.Headers.Add("x-waf-rule", RuleAction.Deny.ToString());
             context.Response.Headers.ContentType = "text/html";
             await context.Response.SendFileAsync(string.Format("status/{0}.html", context.Response.StatusCode));
             return;
@@ -65,7 +89,7 @@ public class WafMiddleware
         foreach (var rule in matchedRules)
         {
             finalRule = rule;
-            if (rule.Action.Equals("deny", StringComparison.OrdinalIgnoreCase))
+            if (rule.Action == RuleAction.Deny)
             {
                 break; 
             }
@@ -76,7 +100,7 @@ public class WafMiddleware
             }
         }
 
-        if (finalRule.Action == "deny") {
+        if (finalRule.Action == RuleAction.Deny) {
             context.Response.StatusCode = 403; // Forbidden
             context.Response.Headers.Add("x-waf-rule", "deny");
             context.Response.Headers.ContentType = "text/html";

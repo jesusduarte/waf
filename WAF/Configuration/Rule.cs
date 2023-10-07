@@ -11,7 +11,9 @@ namespace WAF.Configuration
         public Dictionary<string, string> FieldRegexes { get; set; } = null;
         public List<string> AllowedContentTypes { get; set; } = null;
         public List<string> DisallowedContentTypes { get; set; } = null;
-        public string Action { get; set; } = "deny";
+
+        [JsonConverter(typeof(JsonStringEnumConverter))]
+        public RuleAction Action { get; set; } = RuleAction.Deny;
 
         [JsonConverter(typeof(JsonStringEnumConverter))]
         public RuleOnMatchBehaviour OnMatch { get; set; } = RuleOnMatchBehaviour.Continue;
@@ -78,11 +80,5 @@ namespace WAF.Configuration
             return true;
         }
         // ... rest of the code
-    }
-
-    public enum RuleOnMatchBehaviour
-    {
-        Continue,
-        Stop
     }
 }
