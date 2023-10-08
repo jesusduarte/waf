@@ -33,18 +33,19 @@ public class WafMiddleware
         Debug.WriteLine("(+) ProxyMiddleware constructor");
     }
 
-    private async Task SendBlockedByMiddleware(HttpContext context)
+    private async Task SendBlockedByMiddleware(HttpContext context, string reason ="Ruta no permitida")
     {
         context.Response.StatusCode = 403; // Forbidden
         context.Response.Headers.Add("x-waf", "2");
         context.Response.Headers.ContentType = "text/html";
+        context.Response.Headers.CacheControl = "no-store";
 
         // Leer el archivo HTML
         string htmlFilePath = string.Format("status/{0}.html", context.Response.StatusCode);
         string htmlContent = await File.ReadAllTextAsync(htmlFilePath);
 
         // Realizar el reemplazo de placeholders
-        htmlContent = htmlContent.Replace("{reason}", "Ruta no permitida"); // Reemplazar "{reason}" con el motivo real
+        htmlContent = htmlContent.Replace("{reason}", reason); // Reemplazar "{reason}" con el motivo real
         htmlContent = htmlContent.Replace("{path}", context.Request.Path); // Reemplazar "{path}" con la ruta real
 
         // Convertir el contenido HTML modificado en bytes
@@ -97,28 +98,28 @@ public class WafMiddleware
         }
 
         // Sanitization logic here
-        await SanitizeRequest(context.Request);
-
-        await _next(context);
+        bool shouldContinue = await SanitizeRequest(context.Request);
+        if (shouldContinue) { await _next(context); };
     }
 
 
-    private async Task SanitizeRequest(HttpRequest request)
+    private async Task<bool> SanitizeRequest(HttpRequest request)
     {
-        SanitizeRequestHeaders(request);
-        SanitizeRequestQuery(request);
-
-        //QueryBuilder qb = new QueryBuilder();
+        return SanitizeRequestHeaders(request) && 
+               SanitizeRequestQuery(request);
     }
 
-    private void SanitizeRequestHeaders(HttpRequest request)
+    private bool SanitizeRequestHeaders(HttpRequest request)
     {
         // Add sanitization logic here. For example, remove a potentially harmful header.
         request.Headers.Remove("X-Potentially-Harmful-Header");
+        return true;
     }
 
-    private void SanitizeRequestQuery(HttpRequest request)
+    private bool SanitizeRequestQuery(HttpRequest request)
     {
+        bool shouldContinue = true;
+
         Dictionary<string, StringValues> items = new();
         foreach (var item in request.Query)
         {
@@ -127,6 +128,8 @@ public class WafMiddleware
             items.Add(item.Key, clean);
         }
         request.Query = new QueryCollection(items);
+
+        return shouldContinue;
     }
 
     /// <summary>

@@ -27,6 +27,7 @@ namespace WAF.Middlewares
             context.Response.StatusCode = 403; // Forbidden
             context.Response.Headers.Add("x-waf", "3");
             context.Response.Headers.ContentType = "text/html";
+            context.Response.Headers.CacheControl = "no-store";
 
             // Leer el archivo HTML
             string htmlFilePath = string.Format("status/{0}.html", context.Response.StatusCode);
