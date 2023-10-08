@@ -1,4 +1,5 @@
-﻿using System.IO.Compression;
+﻿using Microsoft.Extensions.FileSystemGlobbing;
+using System.IO.Compression;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using System.Text.Json.Serialization;
@@ -41,8 +42,8 @@ namespace WAF.Configuration
                 data =  new GZipStream(data, CompressionMode.Decompress);
             }
 
-
-            bool matched = false;
+            bool matchedMagicNumber = false;
+            bool matchedContentType = false;
             if (data == null) throw new ArgumentNullException("data");
             if (MagicNumbers?.Count > 0)
             {
@@ -63,23 +64,22 @@ namespace WAF.Configuration
                     Memory<byte> memory = new(buffer);
                     var read = await data.ReadAsync(buffer);
 
-                    matched = MemoryExtensions.SequenceEqual(memory.Span, magic.Span);
-                    if (matched) { break; }
+                    matchedMagicNumber = MemoryExtensions.SequenceEqual(memory.Span, magic.Span);
+                    if (matchedMagicNumber) { break; }
                 }
 
-                
             }
-            else if ((ContentType?.Count??0 )> 0)
+            else if (response.ContentType != null && (ContentType?.Count??0 )> 0)
             {
                 List<Regex> list = ContentType ?? new List<Regex>();
-                foreach (var item in list)
+                foreach (var regex in list)
                 {
-                    matched = item.IsMatch(response.ContentType);
-                    if (matched) break;
+                    matchedContentType = regex.IsMatch(response.ContentType);
+                    if (matchedContentType) break;
                 }
             }
 
-            return matched;
+            return matchedMagicNumber || matchedContentType;
         }
     }
 }

@@ -30,7 +30,12 @@ public class AesCryptor
         }
 
         byte[] cipherText = aesAlg.IV.Concat(msEncrypt.ToArray()).ToArray();
-        return Convert.ToBase64String(cipherText);
+        string result = Convert.ToBase64String(cipherText);
+        Array.Clear(cipherText);
+        Array.Clear(aesAlg.Key);
+        Array.Clear(aesAlg.IV);
+
+        return result;
     }
 
     public string Decrypt(string encryptedSessionID)
@@ -46,7 +51,11 @@ public class AesCryptor
         using MemoryStream msDecrypt = new(cipherTextBytes);
         using CryptoStream csDecrypt = new(msDecrypt, decryptor, CryptoStreamMode.Read);
         using StreamReader srDecrypt = new(csDecrypt);
-        return srDecrypt.ReadToEnd();
+        string result = srDecrypt.ReadToEnd();
+        Array.Clear(aesAlg.Key);
+        Array.Clear(aesAlg.IV);
+        Array.Clear(cipherTextBytes);
+        return result;
     }
 
     private static byte[] DeriveKeyBytes(string key, int keySizeInBytes)
@@ -58,6 +67,8 @@ public class AesCryptor
         // Truncate or pad the hash to the desired key size
         byte[] derivedKey = new byte[keySizeInBytes];
         Array.Copy(hash, derivedKey, Math.Min(keySizeInBytes, hash.Length));
+        Array.Clear(keyBytes);
+        Array.Clear(hash);
 
         return derivedKey;
     }

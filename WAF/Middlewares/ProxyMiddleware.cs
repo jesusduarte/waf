@@ -1,6 +1,10 @@
-﻿using Microsoft.Net.Http.Headers;
+﻿using Microsoft.AspNetCore.DataProtection.KeyManagement;
+using Microsoft.Extensions.Primitives;
+using Microsoft.Net.Http.Headers;
+using Microsoft.AspNetCore.Http.Extensions;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using WAF.Configuration;
 
 namespace WAF.Middlewares;
@@ -67,36 +71,53 @@ public class ProxyMiddleware
         }
 
         var cookieHeaders = context.Request.Headers.Where(h => h.Key.StartsWith("cookie", StringComparison.OrdinalIgnoreCase)).ToList();
+        var cookiesToAdd = new List<CookieHeaderValue>();
         foreach (var header in cookieHeaders)
         {
             string key = header.Key;
-            var cookie = CookieHeaderValue.Parse(header.Value.ToString());
+            var cookies = CookieHeaderValue.ParseList(header.Value);
 
-            bool renameCookie = _config.SessionConfig != null && _config.SessionConfig.RenameTo.Equals(cookie.Name.Value, StringComparison.OrdinalIgnoreCase);
-            if (renameCookie)
+            foreach (var cookie in cookies??new List<CookieHeaderValue>())
             {
-                cookie.Name = _config.SessionConfig?.CookieName;
-            }
-
-            bool decryptCookie = _config.SessionConfig != null && _config.SessionConfig.Encrypt.HasValue && _config.SessionConfig.Encrypt.Value == true;
-            if (decryptCookie)
-            {
-                try
+                bool renameCookie = _config.SessionConfig != null && 
+                    _config.SessionConfig.RenameTo.Equals(cookie.Name.Value, StringComparison.OrdinalIgnoreCase);
+                
+                if (renameCookie)
                 {
-                    var crypto = new AesCryptor(_config.SessionConfig?.EncryptKey ?? string.Empty);
-                    cookie.Value = crypto.Decrypt(cookie.Value.Value);
+                    cookie.Name = _config.SessionConfig?.CookieName;
                 }
-                catch (Exception e)
-                {
-                    cookie.Value = string.Empty;
-                    Debug.WriteLine("{0} Response.CookieDec: {1}", "{!}", "Could Not decrypt cookie value");
-                }
-                Debug.WriteLine("(*) Response.CookieDec: {0} - {1}", cookie.Name.Value, cookie.Value.Value);
-            }
 
-            Debug.WriteLine("(*) UpstreamRequest.Cookie: {0} - {1}", key, cookie.ToString());
-            _httpClient.DefaultRequestHeaders.TryAddWithoutValidation(key, cookie.ToString());
+                bool decryptCookie = _config.SessionConfig != null &&
+                    _config.SessionConfig.Encrypt.HasValue &&
+                    _config.SessionConfig.Encrypt.Value == true && 
+                    _config.SessionConfig.CookieName.Equals(cookie.Name.Value, StringComparison.OrdinalIgnoreCase);
+                
+                if (decryptCookie)
+                {
+                    try
+                    {
+                        var crypto = new AesCryptor(_config.SessionConfig?.EncryptKey ?? string.Empty);
+                        cookie.Value = crypto.Decrypt(cookie.Value.Value);
+                    }
+                    catch (Exception e)
+                    {
+                        cookie.Value = string.Empty;
+                        Debug.WriteLine("{0} Response.CookieDec: {1}", "{!}", "Could Not decrypt cookie value");
+                    }
+                    Debug.WriteLine("(*) Response.CookieDec: {0} - {1}", cookie.Name.Value, cookie.Value.Value);
+                }
+
+                Debug.WriteLine("(*) UpstreamRequest.Cookie: {0} - {1}", key, cookie.ToString());
+                cookiesToAdd.Add(cookie);
+                //_httpClient.DefaultRequestHeaders.TryAddWithoutValidation(key, cookie.ToString());
+            }
+            
         }
+
+        cookiesToAdd.ForEach(c =>
+            _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("cookie", c.ToString())
+        );
+        
 
         try
         {
@@ -120,57 +141,106 @@ public class ProxyMiddleware
         contextResponse.StatusCode = (int)upstreamResponse.StatusCode;
 
         // Copy headers if needed
-        var setcookies = upstreamResponse.Headers.Where(h => h.Key.StartsWith("set-cookie", StringComparison.OrdinalIgnoreCase)).ToList();
-        foreach (var header in setcookies)
-        {
-            string value = string.Join("; ", header.Value.ToArray());
-            var setcookie = SetCookieHeaderValue.Parse(value);
+        var setcookiesHeaders = upstreamResponse.Headers.Where(h => h.Key.StartsWith("set-cookie", StringComparison.OrdinalIgnoreCase)).ToList();
+        setcookiesHeaders.ForEach(x => Console.WriteLine("Set-Cookie:  " +x.Key + " " + string.Join( ", ", x.Value)));
 
-            if (_config.SessionConfig != null && _config.SessionConfig.CookieName.Equals(setcookie.Name.Value, StringComparison.OrdinalIgnoreCase))
-            {
-                setcookie.Name = _config.SessionConfig.RenameTo;
-                if (_config.SessionConfig.Secure.HasValue)
-                {
-                    setcookie.Secure = _config.SessionConfig.Secure.Value;
-                }
-                if (_config.SessionConfig.HttpOnly.HasValue)
-                {
-                    setcookie.HttpOnly = _config.SessionConfig.HttpOnly.Value;
-                }
-                if (_config.SessionConfig.SameSite != Microsoft.Net.Http.Headers.SameSiteMode.Unspecified)
-                {
-                    setcookie.SameSite = _config.SessionConfig.SameSite;
-                }
-                if (_config.SessionConfig.Encrypt.HasValue && _config.SessionConfig.Encrypt.Value == true)
-                {
-                    var crypto = new AesCryptor(_config.SessionConfig.EncryptKey ?? string.Empty);
-                    setcookie.Value = crypto.Encrypt(setcookie.Value.Value); //Encrypt(setcookie.Value.Value, _config.SessionConfig.EncryptKey);
-                    Debug.WriteLine("(*) Response.SetCookieEnc: {0} - {1}", setcookie.Name.Value, setcookie.Value.Value);
-                }
-            }
-            Debug.WriteLine("(*) Response.SetCookie: {0} - {1}", header.Key, value);
-            Debug.WriteLine("(*) Response.SetCookieCHV: {0} - {1}", header.Key, setcookie.ToString());
-            contextResponse.Headers[header.Key] = setcookie.ToString();
+        var toAddSetCookies = new List<SetCookieHeaderValue>();
+
+        var responseContextSetCookieHeaders = SetCookieHeaderValue.ParseList(contextResponse.Headers
+            .Where(h => h.Key.StartsWith("set-cookie", StringComparison.OrdinalIgnoreCase))
+            .Select(h => h.Value.ToString())
+            .ToList()
+        );
+        toAddSetCookies.AddRange(responseContextSetCookieHeaders);
+
+        var typedHeaders = contextResponse.GetTypedHeaders();
+        var cookies = typedHeaders.SetCookie;
+
+        if (toAddSetCookies.Count > 0)
+        {
+            contextResponse.Headers.Remove("set-cookie");
         }
+
+        foreach (var setCookieHeader in setcookiesHeaders)
+        {
+            var values = SetCookieHeaderValue.ParseList(setCookieHeader.Value.ToList());
+
+            foreach (var setcookie in values)
+            {
+                //var setcookie = ;
+
+                if (_config.SessionConfig != null && 
+                    _config.SessionConfig.CookieName.Equals(setcookie.Name.Value, StringComparison.OrdinalIgnoreCase))
+                {
+                    setcookie.Name = _config.SessionConfig.RenameTo;
+                    if (_config.SessionConfig.Secure.HasValue)
+                    {
+                        setcookie.Secure = _config.SessionConfig.Secure.Value;
+                    }
+                    if (_config.SessionConfig.HttpOnly.HasValue)
+                    {
+                        setcookie.HttpOnly = _config.SessionConfig.HttpOnly.Value;
+                    }
+                    if (_config.SessionConfig.SameSite != Microsoft.Net.Http.Headers.SameSiteMode.Unspecified)
+                    {
+                        setcookie.SameSite = _config.SessionConfig.SameSite;
+                    }
+                    if (_config.SessionConfig.Encrypt.HasValue && _config.SessionConfig.Encrypt.Value == true)
+                    {
+                        var crypto = new AesCryptor(_config.SessionConfig.EncryptKey ?? string.Empty);
+                        setcookie.Value = crypto.Encrypt(setcookie.Value.Value); //Encrypt(setcookie.Value.Value, _config.SessionConfig.EncryptKey);
+                        Debug.WriteLine("(*) Response.SetCookieEnc: {0} - {1}", setcookie.Name.Value, setcookie.Value.Value);
+                    }
+                }
+                Debug.WriteLine("(*) Response.SetCookie: {0} - {1}", setCookieHeader.Key, setcookie.Value);
+                Debug.WriteLine("(*) Response.SetCookieCHV: {0} - {1}", setCookieHeader.Key, setcookie.ToString());
+                toAddSetCookies.Add(setcookie);
+            }
+        }
+
+        if (toAddSetCookies.Count > 0)
+        {
+            
+
+            //contextResponse.Headers.Add(
+            //    "set-cookie",
+            //    string.Join(", ", toAddSetCookies.Select(c =>
+            //    {
+            //        Console.WriteLine("Adding Cookie to contextReponse.Header: " + c.ToString());
+            //        return c.ToString();
+            //    })
+            //    )
+            //);
+
+            toAddSetCookies.Select(c => {
+                    Console.WriteLine("Adding Cookie to contextReponse.Header: " + c.ToString());
+                    return c.ToString();
+                })
+                .ToList()
+                .ForEach(x => contextResponse.Headers.Add("set-cookie", x));
+            
+        }
+
+        //contextResponse.Headers.Add("set-cookie", string.Join(", ", toAddSetCookies.Select(c => c.ToString()).ToArray()));
 
         var otherHeaders = upstreamResponse.Headers.Where(h => !h.Key.StartsWith("set-cookie", StringComparison.OrdinalIgnoreCase)).ToList();
         foreach (var header in otherHeaders)
         {
             string value = string.Join("; ", header.Value.ToArray());
             contextResponse.Headers[header.Key] = value;
-            Debug.WriteLine("(*) Response.Header: {0} - {1}", header.Key, value);
+            //Debug.WriteLine("(*) Response.Header: {0} - {1}", header.Key, value);
         }
         foreach (var header in upstreamResponse.Content.Headers)
         {
             string value = string.Join("; ", header.Value.ToArray());
             contextResponse.Headers[header.Key] = header.Value.ToArray();
-            Debug.WriteLine("(*) Response.Content.Header: {0} - {1}", header.Key, value);
+            //Debug.WriteLine("(*) Response.Content.Header: {0} - {1}", header.Key, value);
         }
         foreach (var header in upstreamResponse.TrailingHeaders)
         {
             string value = string.Join("; ", header.Value.ToArray());
             contextResponse.Headers[header.Key] = header.Value.ToArray();
-            Debug.WriteLine("(*) Response.Trailing.Header: {0} - {1}", header.Key, value);
+            //Debug.WriteLine("(*) Response.Trailing.Header: {0} - {1}", header.Key, value);
         }
 
         // Copy response body

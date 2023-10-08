@@ -9,6 +9,10 @@
     {
       "Network": "::1/64",
       "Action": "Allow"
+    },
+    {
+      "Network": "192.168.1.11/32",
+      "Action": "Allow"
     }
   ],
 
@@ -21,29 +25,48 @@
     "Secure": true,
     "HttpOnly": true
   },
+
+  "AllwaysRemoveHeaders": [
+    "Server"
+  ],
+
   "Rules": [
+    {
+      "Method": "GET",
+      "PathPattern": "/cdu/{page}",
+      "SegmentRegexes": {
+        "page": "^clientes\\.listado\\.php$"
+      },
+      "Action": "deny"
+    },
     {
       "Method": "GET",
       "PathPattern": "/cdu/{page}",
       "SegmentRegexes": {
         "page": "^[a-z\\.]+\\.php"
       },
-      "_comments": {
-        "FieldRegexes": {},
-        "AllowedContentTypes": [],
-        "DisallowedContentTypes": [ "application/json" ]
-      },
       "Action": "allow",
-      "OnMatch": "stop"
+      "OnMatch": "continue"
     },
     {
       "Method": "GET",
       "PathPattern": "/cdu/{page}",
       "SegmentRegexes": {
-        "page": "^clientes.listado.php"
+        "page": "^secret\\.txt$"
       },
 
-      "Action": "deny"
+      "Action": "allow",
+      "OnMatch": "continue"
+    },
+    {
+      "Method": "GET",
+      "PathPattern": "/cdu/{page}",
+      "SegmentRegexes": {
+        "page": "^calc\\.exe$"
+      },
+
+      "Action": "allow",
+      "OnMatch": "continue"
     },
     {
       "Method": "GET",
@@ -139,7 +162,7 @@
       "Action": "deny"
     },
     {
-      "Name": "Linux Script",
+      "Name": "Linux Script", 
       "MagicNumbersHex": [
         "23 21"
       ],

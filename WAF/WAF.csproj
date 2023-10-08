@@ -12,10 +12,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Remove="certificado.pfx" />
     <None Remove="status\403.html" />
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="certificado.pfx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="status\403.html">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>

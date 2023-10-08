@@ -99,7 +99,18 @@ public class WafMiddleware
 
         // Sanitization logic here
         bool shouldContinue = await SanitizeRequest(context.Request);
-        if (shouldContinue) { await _next(context); };
+        if (shouldContinue) {
+            MemoryStream buffer = new();
+            Stream original = context.Response.Body;
+            context.Response.Body = buffer;
+            await _next(context);
+
+            SanitizeResponseHeaders(context.Response);
+            buffer.Position = 0;
+            context.Response.Body = original;
+            await buffer.CopyToAsync(context.Response.Body);
+
+        };
     }
 
 
@@ -113,6 +124,11 @@ public class WafMiddleware
     {
         // Add sanitization logic here. For example, remove a potentially harmful header.
         request.Headers.Remove("X-Potentially-Harmful-Header");
+        return true;
+    }
+
+    private bool SanitizeResponseHeaders(HttpResponse response) {
+        response.Headers.Remove("Server");
         return true;
     }
 

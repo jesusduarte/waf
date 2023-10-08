@@ -41,7 +41,10 @@ namespace WAF
             }
 
             var builder = WebApplication.CreateBuilder(args);
-
+            builder.WebHost.ConfigureKestrel(serverOptions =>
+            {
+                serverOptions.AddServerHeader = false;
+            });
             // Add services to the container.
 
             //builder.Services.AddControllers();
